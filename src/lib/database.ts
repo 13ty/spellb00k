@@ -1,14 +1,11 @@
 // src/lib/database.ts
 import initSqlJs, { type Database, type SqlJsStatic } from 'sql.js';
-// Removed: import { promises as fs } from 'fs';
-// Removed: import path from 'path';
 
-// Removed: const DB_FILE_PATH = path.resolve('/home/project/ebook_generator.db');
 let SQL: SqlJsStatic | null = null;
 let db: Database | null = null;
 
 // Define the expected path for the WASM file in the public directory
-// const SQL_WASM_PATH = '/sql-wasm.wasm'; // Keep for reference, but won't use in locateFile
+const SQL_WASM_PATH = '/sql-wasm.wasm'; // Path relative to the public root
 
 async function initializeDatabase(): Promise<Database> {
   if (db) {
@@ -17,12 +14,14 @@ async function initializeDatabase(): Promise<Database> {
 
   if (!SQL) {
     try {
-      console.log("Attempting to initialize SQL.js (without locateFile)...");
-      // Initialize without locateFile, relying on sql.js default loading mechanism
-      // It should look for 'sql-wasm.wasm' relative to its script,
-      // which Vite should serve from the 'public' directory at the root.
+      console.log("Attempting to initialize SQL.js with locateFile...");
+      // Use locateFile to explicitly point to the WASM file served by Vite
       SQL = await initSqlJs({
-        // locateFile option removed
+        locateFile: (file) => {
+            console.log(`locateFile called with: ${file}. Returning: ${SQL_WASM_PATH}`);
+            // Ensure it always returns the correct path relative to the root
+            return SQL_WASM_PATH;
+        }
       });
       console.log("SQL.js initialized successfully.");
     } catch (err) {
@@ -119,9 +118,6 @@ async function initializeDatabase(): Promise<Database> {
   return db;
 }
 
-// Removed the automatic saveDatabase function that used fs
-// async function saveDatabase() { ... }
-
 /**
  * Exports the current database state as a Uint8Array.
  * This is used by the "Save Project to File" functionality.
@@ -152,8 +148,13 @@ async function loadDatabaseFromFile(data: Uint8Array): Promise<boolean> {
          // Initialize SQL.js if it hasn't been already
          try {
             console.log("Initializing SQL.js for file load...");
-            // Initialize without locateFile here too
-            SQL = await initSqlJs({});
+            // Use locateFile here too
+            SQL = await initSqlJs({
+                locateFile: (file) => {
+                    console.log(`locateFile (load) called with: ${file}. Returning: ${SQL_WASM_PATH}`);
+                    return SQL_WASM_PATH;
+                }
+            });
             console.log("SQL.js initialized for file load.");
          } catch (error) {
              console.error('Failed to initialize SQL.js for loading:', error);
@@ -176,24 +177,19 @@ async function loadDatabaseFromFile(data: Uint8Array): Promise<boolean> {
         console.log("Attempting to load database from provided data...");
         db = new SQL.Database(data);
         console.log('Database loaded from file data into memory.');
-        // No need to save back to file system here
         return true;
     } catch (error) {
         console.error('Error loading database from file data:', error);
         db = null; // Ensure db is null if loading failed
-        // Attempt to re-initialize with an empty database?
-        // await initializeDatabase(); // Re-initialize an empty DB on failure - CAREFUL: might infinite loop if init fails
         return false;
     }
 }
 
 
 // Function to run SQL commands (INSERT, UPDATE, DELETE, CREATE, etc.)
-// No longer automatically saves after each run
 async function run(sql: string, params: (string | number | null | Uint8Array)[] = []): Promise<void> {
   const currentDb = await initializeDatabase(); // Ensures DB is ready
   currentDb.run(sql, params);
-  // Removed: await saveDatabase();
 }
 
 // Function to get results (SELECT) - returns array of objects
@@ -216,17 +212,11 @@ async function getOne<T>(sql: string, params: (string | number | null | Uint8Arr
 }
 
 
-// Removed graceful shutdown handlers related to saving fs file
-
 export const dbService = {
   initialize: initializeDatabase,
-  // Removed: save: saveDatabase, // No automatic file saving
   run,
   get,
   getOne,
-  exportDatabase, // Keep export function for manual saving
-  loadDatabaseFromFile, // Keep load function for manual loading
+  exportDatabase,
+  loadDatabaseFromFile,
 };
-
-// Initialize DB on module load (optional, can also be called explicitly)
-// initializeDatabase().catch(console.error); // Let App.tsx handle initial call and error
